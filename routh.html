@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบวางแผนเส้นทางจัดส่งสินค้า - รถกระบะขนาดใหญ่</title>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Leaflet CSS & JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- SheetJS (XLSX) for Excel/CSV Parsing & Export -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --bg-main: #F4F7FA;
+    --bg-card: #FFFFFF;
+    --primary: #2563EB;
+    --primary-soft: #EFF6FF;
+    --primary-border: #BFDBFE;
+    --accent: #0D9488;
+    --accent-soft: #F0FDFA;
+    --accent-border: #99F6E4;
+    --text-main: #1E293B;
+    --text-muted: #64748B;
+    --border-color: #E2E8F0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Sarabun', sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    line-height: 1.5;
+    font-size: 15px;
+  }
+
+  h1, h2, h3, .font-heading { font-family: 'Prompt', sans-serif; }
+
+  .top-header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    padding: 10px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  }
+
+  .header-inner {
+    max-width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-badge {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border: 1px solid var(--primary-border);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .brand-title { font-size: 18px; font-weight: 600; color: var(--text-main); }
+  .brand-sub { font-size: 12px; color: var(--text-muted); }
+
+  .nav-tabs {
+    display: flex;
+    gap: 8px;
+    background: #F1F5F9;
+    padding: 4px;
+    border-radius: 10px;
+  }
+
+  .tab-btn {
+    font-family: 'Prompt', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .tab-btn.active {
+    background: var(--bg-card);
+    color: var(--primary);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .tab-btn.active.opt-tab { color: var(--accent); }
+
+  .container { max-width: 100%; margin: 0 auto; padding: 14px 18px 40px; }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+  }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .gsheet-grid {
+    display: grid;
+    grid-template-columns: 2.2fr 1fr auto;
+    gap: 12px;
+    align-items: end;
+  }
+
+  @media (max-width: 850px) {
+    .gsheet-grid { grid-template-columns: 1fr; }
+  }
+
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    align-items: end;
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+  select, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    font-family: 'Sarabun', sans-serif;
+    font-size: 14px;
+    color: var(--text-main);
+    background: #FFFFFF;
+    outline: none;
+  }
+  select:focus, input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  .btn {
+    font-family: 'Prompt', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.15s;
+    white-space: nowrap;
+    height: 38px;
+  }
+  .btn-primary { background: var(--primary); color: #FFFFFF; }
+  .btn-primary:hover { background: #1D4ED8; }
+  .btn-accent { background: var(--accent); color: #FFFFFF; }
+  .btn-accent:hover { background: #0F766E; }
+  .btn-outline { background: #FFFFFF; border-color: #CBD5E1; color: var(--text-main); }
+  .btn-outline:hover { background: #F8FAFC; border-color: #94A3B8; }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .metric-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .metric-box.highlight-blue { background: var(--primary-soft); border-color: var(--primary-border); }
+  .metric-box.highlight-teal { background: var(--accent-soft); border-color: var(--accent-border); }
+  .metric-label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .metric-value { font-family: 'Prompt', sans-serif; font-size: 23px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+  .metric-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  .workspace-grid {
+    display: grid;
+    grid-template-columns: 1.65fr 0.65fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 1150px) {
+    .workspace-grid { grid-template-columns: 1fr; }
+  }
+
+  #map-container {
+    width: 100%;
+    height: 85vh;
+    min-height: 820px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    z-index: 1;
+    background: #E2E8F0;
+    position: relative;
+  }
+
+  .sim-control-overlay {
+    position: absolute;
+    top: 15px;
+    left: 60px;
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 12px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border-color);
+  }
+
+  /* Golden ring animation for reached destination only while active */
+  @keyframes goldPulse {
+    0% { transform: scale(0.9); opacity: 1; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.8); }
+    70% { transform: scale(1.6); opacity: 0; box-shadow: 0 0 0 16px rgba(245, 158, 11, 0); }
+    100% { transform: scale(0.9); opacity: 0; }
+  }
+
+  .golden-ring-marker {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 3px solid #F59E0B;
+    background: rgba(245, 158, 11, 0.3);
+    animation: goldPulse 1.1s infinite;
+    top: -11px;
+    left: -11px;
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  .map-card-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    display: flex;
+    flex-direction: column;
+    background: #FFFFFF;
+  }
+  .map-card-fullscreen #map-container {
+    flex: 1;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .table-wrapper {
+    width: 100%;
+    height: 85vh;
+    min-height: 820px;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: #F8FAFC;
+    color: var(--text-main);
+    font-weight: 700;
+    text-align: left;
+    padding: 10px 10px;
+    border-bottom: 2px solid var(--border-color);
+    z-index: 2;
+  }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #F1F5F9; color: var(--text-main); }
+  tbody tr:hover { background-color: #F8FAFC; cursor: pointer; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-blue { background: #DBEAFE; color: #1E40AF; }
+  .badge-teal { background: #CCFBF1; color: #115E59; }
+  .badge-gray { background: #F1F5F9; color: #475569; }
+
+  .marker-pin {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #FFFFFF;
+    font-family: 'Prompt', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    position: relative;
+  }
+  .marker-depot { background: #0F172A; font-size: 12px; border: 2px solid #38BDF8; }
+
+  .status-bar {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .hidden { display: none !important; }
+  .source-hint { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header class="top-header">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-badge">🚚 Large Pickup Route Optimizer</div>
+      <div>
+        <div class="brand-title">ระบบวางแผนเส้นทางจัดส่ง & จำลองการวิ่งรถตามถนนจริง</div>
+        <div class="brand-sub">วงกลมสีทองเฉพาะจุดที่รถวิ่งมาถึงและหายไปเมื่อผ่านเลยไป</div>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <button class="tab-btn active" id="tab-original" onclick="switchMode('original')">
+        📍 หน้า 1: เส้นทางตามลำดับเดิม
+      </button>
+      <button class="tab-btn opt-tab" id="tab-optimized" onclick="switchMode('optimized')">
+        ⚡ หน้า 2: ระบบแนะนำเส้นทางที่ใกล้กว่า
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- Data Source Card -->
+  <section class="card" style="border-left: 4px solid var(--primary);">
+    <div class="card-title">
+      <span>📊 แหล่งข้อมูลจัดส่ง (เชื่อมต่อ Google Sheets หรือแนบไฟล์)</span>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <label class="btn btn-outline" style="cursor:pointer;">
+          📎 แนบไฟล์ Excel / CSV
+          <input type="file" id="file-upload" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleFileUpload(event)">
+        </label>
+        <button class="btn btn-outline" onclick="exportToExcel()">📥 ดาวน์โหลดผลลัพธ์ (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="gsheet-grid">
+      <div class="form-group">
+        <label>ลิงก์ Google Sheets (URL)</label>
+        <input type="text" id="gsheet-url" placeholder="วางลิงก์ Google Sheets...">
+      </div>
+      <div class="form-group">
+        <label>ชื่อแท็บ Sheet (Sheet Name)</label>
+        <input type="text" id="gsheet-name" placeholder="ระบุชื่อชีต เช่น Sheet1 หรือ จันทร์">
+      </div>
+      <div>
+        <button class="btn btn-primary" onclick="loadFromGoogleSheet()">🔗 ดึงข้อมูลจาก Google Sheet</button>
+      </div>
+    </div>
+    <div class="source-hint">
+      * หมายเหตุ: แชร์ไฟล์ Google Sheet เป็น <strong>"ทุกคนที่มีลิงก์ (Anyone with the link - Viewer)"</strong> (คอลัมน์จำเป็น: <em>รหัสสมาชิก, ชื่อ-นามสกุล, ที่อยู่จัดส่ง, พิกัด</em>)
+    </div>
+  </section>
+
+  <!-- Control Panel Card -->
+  <section class="card">
+    <div class="card-title">
+      <span>⚙️ ตั้งค่าจุดเริ่มต้น (Depot) & ตัวกรองข้อมูล</span>
+    </div>
+
+    <div class="controls-grid">
+      <div class="form-group">
+        <label>จุดเริ่มต้น & จุดสิ้นสุด (Depot)</label>
+        <select id="depot-preset" onchange="onDepotPresetChange()">
+          <option value="13.597500,100.742000">คลังบางพลี (สมุทรปราการ)</option>
+          <option value="13.428500,100.992000">จุดพักรถ/คลังย่อย อมตะซิตี้ ชลบุรี</option>
+          <option value="custom">กำหนดพิกัด Lat, Lng เอง...</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>พิกัดจุดเริ่มต้น (Lat, Lng)</label>
+        <input type="text" id="depot-coords" value="13.597500,100.742000" placeholder="เช่น 13.5975,100.7420" onchange="calculateRoute(true)">
+      </div>
+
+      <div class="form-group">
+        <label>กรองเบอร์รถ</label>
+        <select id="filter-truck" onchange="applyFilters()">
+          <option value="ALL">ทุกเบอร์รถ (ทั้งหมด)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>กรองรอบส่งประจำสัปดาห์</label>
+        <select id="filter-day" onchange="applyFilters()">
+          <option value="ALL">ทุกรอบส่ง</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>สถานะเส้นทางแนะนำ</label>
+        <div id="opt-status-badge" class="badge badge-gray" style="padding:10px; text-align:center; font-size:13px;">รอโหลดข้อมูล...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Summary Metrics -->
+  <section class="metrics-grid">
+    <div class="metric-box">
+      <div class="metric-label">จำนวนจุดจัดส่งที่เลือก</div>
+      <div class="metric-value" id="stat-stops">0 จุด</div>
+      <div class="metric-sub" id="stat-volume">ยอดส่งรวม: 0 ถัง/เดือน</div>
+    </div>
+
+    <div class="metric-box highlight-blue" id="box-orig-dist">
+      <div class="metric-label">ระยะทางรวม (ตามลำดับเดิม)</div>
+      <div class="metric-value" id="stat-orig-dist">0.00 กม.</div>
+      <div class="metric-sub" id="stat-orig-method">ไป-กลับจุดเริ่มต้น</div>
+    </div>
+
+    <div class="metric-box highlight-teal" id="box-opt-dist">
+      <div class="metric-label">ระยะทางรวม (เส้นทางแนะนำใหม่)</div>
+      <div class="metric-value" id="stat-opt-dist">0.00 กม.</div>
+      <div class="metric-sub" id="stat-saved">ประหยัดได้: 0.00 กม. (0.0%)</div>
+    </div>
+
+    <div class="metric-box">
+      <div class="metric-label">เวลาวิ่งงานโดยประมาณ & ค่าน้ำมัน</div>
+      <div class="metric-value" id="stat-time">0 ชม. 0 นาที</div>
+      <div class="metric-sub" id="stat-fuel">ค่าน้ำมันดีเซล (~3.2 บ./กม.): 0 บาท</div>
+    </div>
+  </section>
+
+  <!-- Map & Route Sequence Table -->
+  <section class="workspace-grid">
+    <!-- Left: Extra-Large Interactive Map with Simulation Controls -->
+    <div class="card" id="map-card" style="margin-bottom:0;">
+      <div class="card-title">
+        <span id="map-title">🗺️ แผนที่เส้นทางจัดส่งตามลำดับเดิม</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline" style="padding:4px 12px; font-size:12px; height:auto;" onclick="fitMapBounds()">🔍 ซูมพอดีเส้นทาง</button>
+          <button class="btn btn-primary" id="btn-fullscreen" style="padding:4px 12px; font-size:12px; height:auto;" onclick="toggleMapFullscreen()">⛶ ขยายเต็มจอ</button>
+        </div>
+      </div>
+
+      <div id="map-container">
+        <!-- Simulation Control Bar overlayed on Map -->
+        <div class="sim-control-overlay">
+          <button class="btn btn-primary" id="sim-play-btn" onclick="toggleSimulation()" style="height:32px; padding:0 12px; font-size:12px;">▶ เล่นจำลองวิ่งรถ</button>
+          <button class="btn btn-outline" onclick="stopSimulation()" style="height:32px; padding:0 10px; font-size:12px;">⏹ รีเซ็ต</button>
+          <div style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600;">
+            <span>ความเร็ว:</span>
+            <select id="sim-speed" style="height:32px; padding:2px 6px; font-size:12px;">
+              <option value="0.5">0.5x (สโลว์ / ช้ามาก)</option>
+              <option value="1">1x (ปกติ)</option>
+              <option value="2" selected>2x (เร็ว)</option>
+              <option value="5">5x (ด่วน)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-bar">
+        <span id="route-status">สถานะ: กรุณาเชื่อมต่อ Google Sheets หรือแนบไฟล์ข้อมูลเพื่อเริ่มจำลอง</span>
+        <span id="sim-step-info">จุดที่รถกำลังไปถึง: -</span>
+      </div>
+    </div>
+
+    <!-- Right: Sequence Table -->
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-title">
+        <span id="table-title">📋 ตารางลำดับการจัดส่ง</span>
+        <span class="badge badge-blue" id="table-count-badge">0 รายการ</span>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ลำดับ</th>
+              <th id="th-orig-seq" class="hidden">เดิม</th>
+              <th>เบอร์รถ</th>
+              <th>รหัสสมาชิก</th>
+              <th>ชื่อลูกค้า / สถานที่</th>
+              <th>ระยะช่วง (กม.)</th>
+              <th>ระยะสะสม (กม.)</th>
+            </tr>
+          </thead>
+          <tbody id="route-table-body">
+            <tr><td colspan="7" style="text-align:center; padding:30px; color:#64748B;">ยังไม่มีข้อมูล กรุณาวางลิงก์ Google Sheets หรือแนบไฟล์ด้านบนครับ</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ==========================================
+// APPLICATION STATE
+// ==========================================
+let allCustomers = [];
+let filteredCustomers = [];
+let currentMode = 'original';
+let map = null;
+let routeLayerGroup = null;
+let markersMap = {};
+let isMapFullscreen = false;
+
+let origRouteResult = { orderedList: [], legDistances: [], totalKm: 0, totalSec: 0, geometry: [], isRoadBased: false };
+let optRouteResult = { orderedList: [], legDistances: [], totalKm: 0, totalSec: 0, geometry: [], isRoadBased: false };
+let isOptimizedShorter = true;
+
+// Simulation State
+let simInterval = null;
+let simStepIdx = 0;
+let truckMarker = null;
+let simRoutePolyline = null;
+let activeGoldenRingNode = null;
+let lastReachedIdx = -1;
+
+// ==========================================
+// INITIALIZATION & MAP SETUP
+// ==========================================
+window.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  const savedUrl = localStorage.getItem('last_gsheet_url');
+  const savedName = localStorage.getItem('last_gsheet_name');
+  if (savedUrl) document.getElementById('gsheet-url').value = savedUrl;
+  if (savedName) document.getElementById('gsheet-name').value = savedName;
+});
+
+function initMap() {
+  map = L.map('map-container', {
+    center: [13.45, 100.95],
+    zoom: 11,
+    zoomControl: true
+  });
+
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  });
+
+  osmLayer.addTo(map);
+  routeLayerGroup = L.layerGroup().addTo(map);
+
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 300);
+}
+
+function toggleMapFullscreen() {
+  const card = document.getElementById('map-card');
+  const btn = document.getElementById('btn-fullscreen');
+  isMapFullscreen = !isMapFullscreen;
+
+  if (isMapFullscreen) {
+    card.classList.add('map-card-fullscreen');
+    btn.textContent = '✕ ย่อกลับขนาดปกติ';
+  } else {
+    card.classList.remove('map-card-fullscreen');
+    btn.textContent = '⛶ ขยายเต็มจอ';
+  }
+
+  setTimeout(() => {
+    if (map) {
+      map.invalidateSize();
+      fitMapBounds();
+    }
+  }, 200);
+}
+
+// ==========================================
+// GOOGLE SHEETS FETCHING
+// ==========================================
+function extractSheetId(url) {
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : null;
+}
+
+async function loadFromGoogleSheet() {
+  const urlInput = document.getElementById('gsheet-url').value.trim();
+  const sheetNameInput = document.getElementById('gsheet-name').value.trim();
+
+  if (!urlInput) {
+    alert('กรุณาวางลิงก์ Google Sheets ก่อนครับ');
+    return;
+  }
+
+  const sheetId = extractSheetId(urlInput);
+  if (!sheetId) {
+    alert('รูปแบบลิงก์ Google Sheets ไม่ถูกต้อง');
+    return;
+  }
+
+  localStorage.setItem('last_gsheet_url', urlInput);
+  localStorage.setItem('last_gsheet_name', sheetNameInput);
+
+  const statusEl = document.getElementById('route-status');
+  statusEl.textContent = 'สถานะ: กำลังเชื่อมต่อและดึงข้อมูลจาก Google Sheets...';
+
+  let gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+  if (sheetNameInput) {
+    gvizUrl += `&sheet=${encodeURIComponent(sheetNameInput)}`;
+  }
+
+  try {
+    const response = await fetch(gvizUrl);
+    if (!response.ok) throw new Error('ไม่สามารถเข้าถึงไฟล์ได้ กรุณาตรวจสอบสิทธิ์การแชร์');
+    const csvText = await response.text();
+
+    if (csvText.trim().startsWith('<!DOCTYPE html>') || csvText.includes('accounts.google.com')) {
+      throw new Error('ไฟล์ Google Sheet ติดสิทธิ์ส่วนตัว กรุณาตั้งค่าแชร์เป็น "ทุกคนที่มีลิงก์สามารถดูได้"');
+    }
+
+    const workbook = XLSX.read(csvText, { type: 'string' });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+
+    processParsedRows(rows, sheetNameInput ? `Google Sheet (${sheetNameInput})` : 'Google Sheet');
+  } catch (err) {
+    statusEl.textContent = 'สถานะ: ดึงข้อมูลไม่สำเร็จ';
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+// ==========================================
+// FILE UPLOAD & PROCESSING
+// ==========================================
+function parseCoords(coordStr) {
+  if (!coordStr) return null;
+  const parts = String(coordStr).split(',').map(s => parseFloat(s.trim()));
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return { lat: parts[0], lng: parts[1] };
+  }
+  return null;
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+      processParsedRows(rows, `ไฟล์ ${file.name}`);
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function processParsedRows(rows, sourceLabel) {
+  const parsed = [];
+  rows.forEach((r, idx) => {
+    const coordRaw = r['พิกัด'] || r['Coords'] || r['Coordinates'] || r['LatLon'] || '';
+    const coords = parseCoords(coordRaw);
+    if (!coords) return;
+
+    parsed.push({
+      warehouse: String(r['คลัง'] || r['Warehouse'] || 'คลังบางพลี').trim(),
+      memberId: String(r['รหัสสมาชิก'] || r['MemberID'] || r['ID'] || '').trim(),
+      name: String(r['ชื่อ-นามสกุล'] || r['ชื่อลูกค้า'] || r['Name'] || '').trim(),
+      address: String(r['ที่อยู่จัดส่ง บ้านเลขที่/อาคาร'] || r['ที่อยู่จัดส่ง'] || r['Address'] || '').trim(),
+      truck: String(r['เบอร์รถ'] || r['Truck'] || '10L15').trim(),
+      weeklyDay: String(r['รอบส่งประจำสัปดาห์'] || r['Day'] || 'จันทร์').trim(),
+      condition: String(r['เงื่อนไขการจัดส่ง'] || r['Condition'] || 'รอบปกติ').trim(),
+      newDay: String(r['รอบส่งใหม่'] || 'จันทร์').trim(),
+      volume: parseFloat(r['ยอดส่ง/เดือน'] || r['Volume'] || 0) || 0,
+      lat: coords.lat,
+      lng: coords.lng,
+      origSeq: parseInt(r['ลำดับการส่ง'] || r['Seq'] || (idx + 1), 10) || (idx + 1)
+    });
+  });
+
+  if (parsed.length > 0) {
+    allCustomers = parsed;
+    populateFilterDropdowns();
+    applyFilters();
+    alert(`ดึงข้อมูลจาก ${sourceLabel} สำเร็จจำนวน ${parsed.length} จุดจัดส่ง`);
+    calculateRoute(true);
+  } else {
+    alert('ไม่พบคอลัมน์ "พิกัด" หรือข้อมูลพิกัดไม่ถูกต้อง');
+  }
+}
+
+function populateFilterDropdowns() {
+  const trucks = [...new Set(allCustomers.map(c => c.truck).filter(Boolean))];
+  const days = [...new Set(allCustomers.map(c => c.weeklyDay).filter(Boolean))];
+
+  fillSelect('filter-truck', trucks, 'ทุกเบอร์รถ (ทั้งหมด)');
+  fillSelect('filter-day', days, 'ทุกรอบส่ง');
+}
+
+function fillSelect(id, items, defaultLabel) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = `<option value="ALL">${defaultLabel}</option>`;
+  items.forEach(val => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = val;
+    sel.appendChild(opt);
+  });
+}
+
+function applyFilters() {
+  const truckVal = document.getElementById('filter-truck').value;
+  const dayVal = document.getElementById('filter-day').value;
+
+  filteredCustomers = allCustomers
+    .filter(c => (truckVal === 'ALL' || c.truck === truckVal))
+    .filter(c => (dayVal === 'ALL' || c.weeklyDay === dayVal))
+    .sort((a, b) => a.origSeq - b.origSeq);
+
+  calculateRoute(false);
+}
+
+function onDepotPresetChange() {
+  const preset = document.getElementById('depot-preset').value;
+  if (preset !== 'custom') {
+    document.getElementById('depot-coords').value = preset;
+    calculateRoute(true);
+  }
+}
+
+// ==========================================
+// ROUTING & OPTIMIZATION ALGORITHMS
+// ==========================================
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function optimizeSequence(depot, points) {
+  if (points.length <= 2) return [...points];
+  const unvisited = [...points];
+  const tour = [];
+  let current = depot;
+
+  while (unvisited.length > 0) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < unvisited.length; i++) {
+      const d = haversineKm(current.lat, current.lng, unvisited[i].lat, unvisited[i].lng);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    current = unvisited.splice(bestIdx, 1)[0];
+    tour.push(current);
+  }
+
+  const calcTourDist = (arr) => {
+    let sum = haversineKm(depot.lat, depot.lng, arr[0].lat, arr[0].lng);
+    for (let i = 0; i < arr.length - 1; i++) {
+      sum += haversineKm(arr[i].lat, arr[i].lng, arr[i + 1].lat, arr[i + 1].lng);
+    }
+    sum += haversineKm(arr[arr.length - 1].lat, arr[arr.length - 1].lng, depot.lat, depot.lng);
+    return sum;
+  };
+
+  let improved = true;
+  let bestDistance = calcTourDist(tour);
+  let iter = 0;
+  while (improved && iter < 40) {
+    improved = false;
+    iter++;
+    for (let i = 0; i < tour.length - 1; i++) {
+      for (let k = i + 1; k < tour.length; k++) {
+        const newTour = [...tour.slice(0, i), ...tour.slice(i, k + 1).reverse(), ...tour.slice(k + 1)];
+        const newDist = calcTourDist(newTour);
+        if (newDist < bestDistance - 0.01) {
+          for (let idx = 0; idx < tour.length; idx++) tour[idx] = newTour[idx];
+          bestDistance = newDist;
+          improved = true;
+        }
+      }
+    }
+  }
+  return tour;
+}
+
+async function fetchOSRMRoute(depot, orderedPoints) {
+  if (orderedPoints.length === 0) return null;
+  const allCoords = [depot, ...orderedPoints, depot];
+  const coordString = allCoords.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+  const url = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+      const route = data.routes[0];
+      return {
+        totalKm: route.distance / 1000,
+        totalSec: route.duration,
+        legDistances: route.legs.map(leg => leg.distance / 1000),
+        geometry: route.geometry.coordinates.map(c => [c[1], c[0]])
+      };
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+  }
+  return null;
+}
+
+async function calculateRoute(useRealRoadAPI = true) {
+  const depot = parseCoords(document.getElementById('depot-coords').value);
+  if (!depot) {
+    if (filteredCustomers.length > 0) alert('พิกัดจุดเริ่มต้นไม่ถูกต้อง');
+    return;
+  }
+
+  stopSimulation();
+  const statusEl = document.getElementById('route-status');
+  const origList = [...filteredCustomers];
+  let optList = optimizeSequence(depot, filteredCustomers);
+
+  statusEl.textContent = 'สถานะ: กำลังคำนวณเส้นทางถนนจริง (OSRM)...';
+
+  if (useRealRoadAPI && origList.length > 0) {
+    const [osrmOrig, osrmOpt] = await Promise.all([
+      fetchOSRMRoute(depot, origList),
+      fetchOSRMRoute(depot, optList)
+    ]);
+
+    if (osrmOrig) {
+      origRouteResult = {
+        orderedList: origList,
+        legDistances: osrmOrig.legDistances,
+        totalKm: osrmOrig.totalKm,
+        totalSec: osrmOrig.totalSec + (origList.length * 240),
+        geometry: osrmOrig.geometry,
+        isRoadBased: true
+      };
+    }
+    if (osrmOpt) {
+      optRouteResult = {
+        orderedList: optList,
+        legDistances: osrmOpt.legDistances,
+        totalKm: osrmOpt.totalKm,
+        totalSec: osrmOpt.totalSec + (osrmOpt.length * 240),
+        geometry: osrmOpt.geometry,
+        isRoadBased: true
+      };
+    }
+
+    isOptimizedShorter = optRouteResult.totalKm < origRouteResult.totalKm;
+    updateOptimizedStatusBadge();
+    if (!isOptimizedShorter) {
+      optRouteResult = JSON.parse(JSON.stringify(origRouteResult));
+    }
+
+    statusEl.textContent = 'สถานะ: คำนวณเส้นทางตามถนนจริงเรียบร้อยแล้ว';
+    updateDashboard();
+  }
+}
+
+function updateOptimizedStatusBadge() {
+  const badge = document.getElementById('opt-status-badge');
+  if (filteredCustomers.length === 0) {
+    badge.className = 'badge badge-gray';
+    badge.textContent = 'รอข้อมูลจุดจัดส่ง';
+    return;
+  }
+  if (isOptimizedShorter) {
+    badge.className = 'badge badge-teal';
+    badge.textContent = '✅ มีเส้นทางที่สั้นกว่า (พร้อมใช้งาน)';
+  } else {
+    badge.className = 'badge badge-amber';
+    badge.textContent = 'ℹ️ เส้นทางเดิมสั้นที่สุดแล้ว (ใช้เส้นทางเดิม)';
+  }
+}
+
+// ==========================================
+// SIMULATION LOGIC WITH TEMPORARY GOLDEN RING
+// ==========================================
+function toggleSimulation() {
+  if (simInterval) {
+    pauseSimulation();
+  } else {
+    startSimulation();
+  }
+}
+
+function startSimulation() {
+  const activeRoute = currentMode === 'original' ? origRouteResult : optRouteResult;
+  if (activeRoute.orderedList.length === 0 || activeRoute.geometry.length === 0) {
+    alert('ไม่มีข้อมูลเส้นทางถนนจริงสำหรับจำลอง');
+    return;
+  }
+
+  const playBtn = document.getElementById('sim-play-btn');
+  playBtn.textContent = '⏸ พักชั่วคราว';
+  playBtn.className = 'btn btn-accent';
+
+  const geom = activeRoute.geometry;
+
+  if (!truckMarker) {
+    const truckIcon = L.divIcon({
+      className: '',
+      html: `<div style="background:#2563EB; color:white; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; border:2px solid white; box-shadow:0 3px 8px rgba(0,0,0,0.4);">🚚</div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17]
+    });
+    truckMarker = L.marker(geom[0], { icon: truckIcon }).addTo(map);
+  }
+
+  if (!simRoutePolyline) {
+    simRoutePolyline = L.polyline([geom[0]], { color: '#F59E0B', weight: 6, opacity: 0.9 }).addTo(map);
+  }
+
+  const speedVal = parseFloat(document.getElementById('sim-speed').value) || 2;
+  const intervalTime = Math.max(40, 120 / speedVal);
+
+  simInterval = setInterval(() => {
+    if (simStepIdx >= geom.length) {
+      stopSimulation();
+      return;
+    }
+
+    const currentPt = geom[simStepIdx];
+    truckMarker.setLatLng(currentPt);
+    simRoutePolyline.addLatLng(currentPt);
+
+    // Evaluate proximity to customer stops dynamically
+    checkAndManageGoldenRing(currentPt, activeRoute.orderedList);
+
+    simStepIdx++;
+  }, intervalTime);
+}
+
+function checkAndManageGoldenRing(pt, orderedList) {
+  let foundIdx = -1;
+
+  // Check if truck is currently near any customer stop (within 130 meters)
+  orderedList.forEach((cust, idx) => {
+    const dist = haversineKm(pt[0], pt[1], cust.lat, cust.lng);
+    if (dist < 0.13) {
+      foundIdx = idx;
+    }
+  });
+
+  // If truck enters a new customer stop zone
+  if (foundIdx !== -1 && foundIdx !== lastReachedIdx) {
+    // Remove previous ring if exists
+    if (activeGoldenRingNode) {
+      activeGoldenRingNode.remove();
+      activeGoldenRingNode = null;
+    }
+
+    lastReachedIdx = foundIdx;
+    const cust = orderedList[foundIdx];
+    document.getElementById('sim-step-info').textContent = `🎯 ถึงจุดส่งที่ ${foundIdx + 1}: ${cust.name} (${cust.memberId})`;
+    focusMarker(foundIdx);
+
+    // Attach golden ring to the current customer marker
+    const marker = markersMap[foundIdx];
+    if (marker) {
+      const el = marker.getElement();
+      if (el) {
+        const ring = document.createElement('div');
+        ring.className = 'golden-ring-marker';
+        el.appendChild(ring);
+        activeGoldenRingNode = ring;
+      }
+    }
+  } 
+  // If truck has moved away from the stop zone, remove the golden ring immediately
+  else if (foundIdx === -1 && lastReachedIdx !== -1) {
+    // Check if we are far enough from last reached stop
+    const lastCust = orderedList[lastReachedIdx];
+    const dist = haversineKm(pt[0], pt[1], lastCust.lat, lastCust.lng);
+    if (dist > 0.18) {
+      if (activeGoldenRingNode) {
+        activeGoldenRingNode.remove();
+        activeGoldenRingNode = null;
+      }
+      lastReachedIdx = -1;
+    }
+  }
+}
+
+function pauseSimulation() {
+  clearInterval(simInterval);
+  simInterval = null;
+  const playBtn = document.getElementById('sim-play-btn');
+  playBtn.textContent = '▶ เล่นต่อ';
+  playBtn.className = 'btn btn-primary';
+}
+
+function stopSimulation() {
+  clearInterval(simInterval);
+  simInterval = null;
+  simStepIdx = 0;
+  lastReachedIdx = -1;
+
+  const playBtn = document.getElementById('sim-play-btn');
+  playBtn.textContent = '▶ เล่นจำลองวิ่งรถ';
+  playBtn.className = 'btn btn-primary';
+
+  if (truckMarker) {
+    map.removeLayer(truckMarker);
+    truckMarker = null;
+  }
+  if (simRoutePolyline) {
+    map.removeLayer(simRoutePolyline);
+    simRoutePolyline = null;
+  }
+  if (activeGoldenRingNode) {
+    activeGoldenRingNode.remove();
+    activeGoldenRingNode = null;
+  }
+  document.getElementById('sim-step-info').textContent = 'จุดที่รถกำลังไปถึง: -';
+}
+
+// ==========================================
+// RENDERING & INTERACTION
+// ==========================================
+function switchMode(mode) {
+  stopSimulation();
+  currentMode = mode;
+  document.getElementById('tab-original').classList.toggle('active', mode === 'original');
+  document.getElementById('tab-optimized').classList.toggle('active', mode === 'optimized');
+  document.getElementById('th-orig-seq').classList.toggle('hidden', mode !== 'optimized');
+
+  document.getElementById('map-title').textContent = mode === 'original'
+    ? '🗺️ แผนที่เส้นทางจัดส่งตามลำดับเดิม'
+    : (isOptimizedShorter ? '🗺️ แผนที่เส้นทางแนะนำใหม่ที่สั้นกว่า' : '🗺️ เส้นทางเดิมสั้นที่สุดแล้ว');
+
+  document.getElementById('table-title').textContent = mode === 'original'
+    ? '📋 ตารางลำดับการจัดส่งเดิม'
+    : (isOptimizedShorter ? '📋 ตารางลำดับการจัดส่งใหม่ที่แนะนำ' : '📋 ตารางลำดับการจัดส่ง (ใช้ลำดับเดิม)');
+
+  updateDashboard();
+}
+
+function formatNum(num, decimals = 2) {
+  return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function updateDashboard() {
+  const activeRoute = currentMode === 'original' ? origRouteResult : optRouteResult;
+  const totalVolume = filteredCustomers.reduce((sum, c) => sum + c.volume, 0);
+
+  document.getElementById('stat-stops').textContent = `${filteredCustomers.length.toLocaleString()} จุด`;
+  document.getElementById('stat-volume').textContent = `ยอดส่งรวม: ${totalVolume.toLocaleString()} ถัง/เดือน`;
+  document.getElementById('stat-orig-dist').textContent = `${formatNum(origRouteResult.totalKm)} กม.`;
+  document.getElementById('stat-opt-dist').textContent = `${formatNum(optRouteResult.totalKm)} กม.`;
+
+  const savedKm = Math.max(0, origRouteResult.totalKm - optRouteResult.totalKm);
+  const savedPct = origRouteResult.totalKm > 0 ? (savedKm / origRouteResult.totalKm) * 100 : 0;
+  
+  if (isOptimizedShorter) {
+    document.getElementById('stat-saved').textContent = `ประหยัดได้: ${formatNum(savedKm)} กม. (${formatNum(savedPct, 1)}%)`;
+  } else {
+    document.getElementById('stat-saved').textContent = `เส้นทางเดิมสั้นกว่า / เท่ากัน`;
+  }
+
+  const totalHours = Math.floor(activeRoute.totalSec / 3600);
+  const totalMins = Math.round((activeRoute.totalSec % 3600) / 60);
+  document.getElementById('stat-time').textContent = `${totalHours} ชม. ${totalMins} นาที`;
+
+  const fuelCost = activeRoute.totalKm * 3.2;
+  document.getElementById('stat-fuel').textContent = `ค่าน้ำมันดีเซล (~3.2 บ./กม.): ${formatNum(fuelCost, 0)} บาท`;
+  document.getElementById('table-count-badge').textContent = `${activeRoute.orderedList.length} จุดส่ง`;
+
+  renderTable(activeRoute);
+  renderMap();
+}
+
+function renderTable(routeData) {
+  const tbody = document.getElementById('route-table-body');
+  tbody.innerHTML = '';
+
+  if (routeData.orderedList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748B;">ยังไม่มีข้อมูล กรุณาวางลิงก์ Google Sheets หรือแนบไฟล์ด้านบนครับ</td></tr>`;
+    return;
+  }
+
+  const startTr = document.createElement('tr');
+  startTr.style.background = '#F8FAFC';
+  startTr.innerHTML = `
+    <td><span class="badge badge-gray">เริ่ม</span></td>
+    ${currentMode === 'optimized' ? '<td>-</td>' : ''}
+    <td>-</td>
+    <td><strong>DEPOT</strong></td>
+    <td><strong>จุดเริ่มต้น (คลังสินค้า)</strong></td>
+    <td>0.00</td>
+    <td>0.00</td>
+  `;
+  tbody.appendChild(startTr);
+
+  let cumulativeKm = 0;
+  routeData.orderedList.forEach((cust, idx) => {
+    const legKm = routeData.legDistances[idx] || 0;
+    cumulativeKm += legKm;
+
+    const tr = document.createElement('tr');
+    tr.onclick = () => focusMarker(idx);
+    const seqBadgeClass = currentMode === 'original' ? 'badge-blue' : 'badge-teal';
+
+    tr.innerHTML = `
+      <td><span class="badge ${seqBadgeClass}">${idx + 1}</span></td>
+      ${currentMode === 'optimized' ? `<td>#${cust.origSeq}</td>` : ''}
+      <td>${cust.truck}</td>
+      <td>${cust.memberId}</td>
+      <td title="${cust.address}"><strong>${cust.name}</strong> <span style="color:#64748B; font-size:12px;">(${cust.address.slice(0, 26)}...)</span></td>
+      <td>${formatNum(legKm)}</td>
+      <td><strong>${formatNum(cumulativeKm)}</strong></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const returnLeg = routeData.legDistances[routeData.orderedList.length] || 0;
+  cumulativeKm += returnLeg;
+  const endTr = document.createElement('tr');
+  endTr.style.background = '#F8FAFC';
+  endTr.innerHTML = `
+    <td><span class="badge badge-gray">จบ</span></td>
+    ${currentMode === 'optimized' ? '<td>-</td>' : ''}
+    <td>-</td>
+    <td><strong>DEPOT</strong></td>
+    <td><strong>กลับถึงจุดเริ่มต้น (คลังสินค้า)</strong></td>
+    <td>${formatNum(returnLeg)}</td>
+    <td><strong>${formatNum(cumulativeKm)}</strong></td>
+  `;
+  tbody.appendChild(endTr);
+}
+
+function renderMap() {
+  if (!map || !routeLayerGroup) return;
+  routeLayerGroup.clearLayers();
+  markersMap = {};
+
+  const depot = parseCoords(document.getElementById('depot-coords').value);
+  if (!depot) return;
+
+  const depotIcon = L.divIcon({
+    className: '',
+    html: `<div class="marker-pin marker-depot" style="width:36px; height:36px;">คลัง</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+
+  L.marker([depot.lat, depot.lng], { icon: depotIcon })
+    .bindPopup(`<strong>จุดเริ่มต้น (Depot)</strong>`)
+    .addTo(routeLayerGroup);
+
+  const activeRoute = currentMode === 'original' ? origRouteResult : optRouteResult;
+
+  if (currentMode === 'optimized' && isOptimizedShorter && origRouteResult.geometry.length > 0) {
+    L.polyline(origRouteResult.geometry, { color: '#94A3B8', weight: 3, opacity: 0.6, dashArray: '6, 6' }).addTo(routeLayerGroup);
+  }
+
+  if (activeRoute.geometry.length > 0) {
+    const lineColor = currentMode === 'original' ? '#2563EB' : '#0D9488';
+    L.polyline(activeRoute.geometry, { color: lineColor, weight: 5, opacity: 0.85 }).addTo(routeLayerGroup);
+  }
+
+  const pinColor = currentMode === 'original' ? '#2563EB' : '#0D9488';
+  activeRoute.orderedList.forEach((cust, idx) => {
+    const icon = L.divIcon({
+      className: '',
+      html: `<div class="marker-pin" style="width:28px; height:28px; background:${pinColor};">${idx + 1}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    const marker = L.marker([cust.lat, cust.lng], { icon })
+      .bindPopup(`
+        <div style="font-family:'Sarabun',sans-serif; min-width:200px;">
+          <div style="font-weight:700; color:${pinColor}; font-size:14px;">ลำดับที่ ${idx + 1} (เดิม #${cust.origSeq})</div>
+          <div style="font-weight:700; margin-top:2px;">${cust.name}</div>
+          <div style="font-size:12px; color:#475569;">รหัส: ${cust.memberId} | รถ: ${cust.truck}</div>
+          <div style="font-size:12px; margin-top:4px;">${cust.address}</div>
+        </div>
+      `)
+      .addTo(routeLayerGroup);
+
+    markersMap[idx] = marker;
+  });
+
+  fitMapBounds();
+}
+
+function fitMapBounds() {
+  if (!map) return;
+  const depot = parseCoords(document.getElementById('depot-coords').value);
+  const pts = filteredCustomers.map(c => [c.lat, c.lng]);
+  if (depot) pts.push([depot.lat, depot.lng]);
+  if (pts.length > 0) {
+    map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+  }
+}
+
+function focusMarker(idx) {
+  const marker = markersMap[idx];
+  if (marker && map) {
+    map.setView(marker.getLatLng(), 15, { animate: true });
+    marker.openPopup();
+  }
+}
+
+function exportToExcel() {
+  const activeRoute = currentMode === 'original' ? origRouteResult : optRouteResult;
+  if (activeRoute.orderedList.length === 0) {
+    alert('ไม่มีข้อมูลสำหรับส่งออก');
+    return;
+  }
+
+  let cumKm = 0;
+  const exportRows = activeRoute.orderedList.map((c, idx) => {
+    const leg = activeRoute.legDistances[idx] || 0;
+    cumKm += leg;
+    return {
+      'ลำดับวิ่งงาน': idx + 1,
+      'ลำดับเดิม': c.origSeq,
+      'คลัง': c.warehouse,
+      'เบอร์รถ': c.truck,
+      'รหัสสมาชิก': c.memberId,
+      'ชื่อ-นามสกุล': c.name,
+      'ที่อยู่จัดส่ง': c.address,
+      'รอบส่งประจำสัปดาห์': c.weeklyDay,
+      'เงื่อนไขการจัดส่ง': c.condition,
+      'ยอดส่ง/เดือน': c.volume,
+      'พิกัด': `${c.lat},${c.lng}`,
+      'ระยะช่วงนี้ (กม.)': Number(leg.toFixed(2)),
+      'ระยะสะสม (กม.)': Number(cumKm.toFixed(2))
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(exportRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, currentMode === 'original' ? 'Original_Route' : 'Optimized_Route');
+  XLSX.writeFile(wb, `Route_Plan_${currentMode}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+</script>
+</body>
+</html>
